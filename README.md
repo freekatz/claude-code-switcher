@@ -1,4 +1,4 @@
-# Claude Code Switch
+# Claude Code Switcher
 
 [English](#english) | [中文](#中文)
 
