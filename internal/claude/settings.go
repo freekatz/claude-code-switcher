@@ -2,11 +2,14 @@ package claude
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/katz/ccs/internal/config"
 )
@@ -72,11 +75,29 @@ func stripJSONComments(data []byte) []byte {
 
 // GetSettingsPath returns the Claude Code settings.json path
 func GetSettingsPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+	var baseDir string
+
+	if runtime.GOOS == "windows" {
+		// Windows: %APPDATA%\claude\settings.json
+		appData := os.Getenv("APPDATA")
+		if appData == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "", err
+			}
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		baseDir = filepath.Join(appData, "claude")
+	} else {
+		// macOS/Linux: ~/.claude/settings.json
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		baseDir = filepath.Join(home, ".claude")
 	}
-	return filepath.Join(home, ".claude", "settings.json"), nil
+
+	return filepath.Join(baseDir, "settings.json"), nil
 }
 
 // LoadSettings loads the Claude Code settings.json
@@ -131,7 +152,51 @@ func LoadSettings() (*Settings, error) {
 	return &settings, nil
 }
 
-// SaveSettings saves the Claude Code settings.json
+// backup creates a backup of the settings file before modifying
+func backup(path string) error {
+	// Check if file exists
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil // No file to backup
+	}
+
+	// Read current file
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	// Create backup filename with timestamp
+	dir := filepath.Dir(path)
+	backupName := fmt.Sprintf("settings.%s.bak", time.Now().Format("20060102_150405"))
+	backupPath := filepath.Join(dir, backupName)
+
+	// Write backup
+	if err := os.WriteFile(backupPath, data, 0644); err != nil {
+		return err
+	}
+
+	// Clean old backups, keep only last 5
+	cleanOldBackups(dir, 5)
+
+	return nil
+}
+
+// cleanOldBackups removes old backup files, keeping only the most recent ones
+func cleanOldBackups(dir string, keep int) {
+	pattern := filepath.Join(dir, "settings.*.bak")
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) <= keep {
+		return
+	}
+
+	// Files are sorted by name (which includes timestamp), so oldest are first
+	// Remove oldest files
+	for i := 0; i < len(matches)-keep; i++ {
+		os.Remove(matches[i])
+	}
+}
+
+// Save saves the Claude Code settings.json with backup
 func (s *Settings) Save() error {
 	path, err := GetSettingsPath()
 	if err != nil {
@@ -142,6 +207,11 @@ func (s *Settings) Save() error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
+	}
+
+	// Backup before saving
+	if err := backup(path); err != nil {
+		return fmt.Errorf("backup failed: %w", err)
 	}
 
 	// Build the output map with proper field ordering

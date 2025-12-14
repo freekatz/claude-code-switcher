@@ -19,16 +19,33 @@ jobs:
           - goos: darwin
             goarch: amd64
             asset_name: ccs-darwin-amd64
+            ext: ""
           - goos: darwin
             goarch: arm64
             asset_name: ccs-darwin-arm64
+            ext: ""
           # Linux builds
           - goos: linux
             goarch: amd64
             asset_name: ccs-linux-amd64
+            ext: ""
           - goos: linux
             goarch: arm64
             asset_name: ccs-linux-arm64
+            ext: ""
+          # Windows builds
+          - goos: windows
+            goarch: 386
+            asset_name: ccs-windows-x86
+            ext: ".exe"
+          - goos: windows
+            goarch: amd64
+            asset_name: ccs-windows-x64
+            ext: ".exe"
+          - goos: windows
+            goarch: arm64
+            asset_name: ccs-windows-arm64
+            ext: ".exe"
 
     steps:
       - name: Checkout code
@@ -49,14 +66,14 @@ jobs:
           CGO_ENABLED: 0
         run: |
           chmod +x ./scripts/build.sh
-          ./scripts/build.sh "${{ github.ref_name }}" "${{ matrix.asset_name }}"
-          chmod +x ${{ matrix.asset_name }}
+          ./scripts/build.sh "${{ github.ref_name }}" "${{ matrix.asset_name }}${{ matrix.ext }}"
+          if [ -z "${{ matrix.ext }}" ]; then chmod +x "${{ matrix.asset_name }}"; fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
-          path: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}${{ matrix.ext }}
 
   create-release:
     name: Create GitHub Release
