@@ -2,31 +2,49 @@ package claude
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/katz/ccs/internal/config"
 )
 
-// Settings represents the Claude Code settings.json structure
+// managedEnvKeys are the env keys that ccs manages
+var managedEnvKeys = []string{
+	"ANTHROPIC_BASE_URL",
+	"ANTHROPIC_AUTH_TOKEN",
+	"API_TIMEOUT_MS",
+	"ANTHROPIC_MODEL",
+	"ANTHROPIC_SMALL_FAST_MODEL",
+	"ANTHROPIC_DEFAULT_SONNET_MODEL",
+	"ANTHROPIC_DEFAULT_OPUS_MODEL",
+	"ANTHROPIC_DEFAULT_HAIKU_MODEL",
+	"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+}
+
+// Settings wraps the raw settings.json
+// ccs only manages specific keys in "env", everything else is preserved as-is
 type Settings struct {
-	Model                   string                 `json:"model,omitempty"`
-	AlwaysThinkingEnabled   *bool                  `json:"alwaysThinkingEnabled,omitempty"`
-	Env                     map[string]interface{} `json:"env,omitempty"`
-	Permissions             map[string]interface{} `json:"permissions,omitempty"`
-	AllowedDirectories      []string               `json:"allowedDirectories,omitempty"`
-	McpServers              map[string]interface{} `json:"mcpServers,omitempty"`
-	AdditionalFields        map[string]interface{} `json:"-"`
+	raw map[string]interface{}
+}
+
+// getEnv returns the env map, creating it if needed
+func (s *Settings) getEnv() map[string]interface{} {
+	if s.raw == nil {
+		s.raw = make(map[string]interface{})
+	}
+	env, ok := s.raw["env"].(map[string]interface{})
+	if !ok {
+		env = make(map[string]interface{})
+		s.raw["env"] = env
+	}
+	return env
 }
 
 // stripJSONComments removes comments from JSON content (JSONC format)
-// and handles trailing commas
 func stripJSONComments(data []byte) []byte {
 	content := string(data)
 	lines := strings.Split(content, "\n")
@@ -35,13 +53,11 @@ func stripJSONComments(data []byte) []byte {
 	for _, line := range lines {
 		originalLine := line
 
-		// Remove # style comments (commonly used in Claude settings)
+		// Remove # style comments
 		if idx := strings.Index(line, "#"); idx >= 0 {
-			// Check if # is inside a string by counting quotes before it
 			beforeHash := line[:idx]
 			quoteCount := strings.Count(beforeHash, `"`) - strings.Count(beforeHash, `\"`)
 			if quoteCount%2 == 0 {
-				// # is not inside a string, it's a comment
 				line = beforeHash
 			}
 		}
@@ -55,7 +71,6 @@ func stripJSONComments(data []byte) []byte {
 			}
 		}
 
-		// Skip lines that are now empty or whitespace-only (were comment-only lines)
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" && strings.TrimSpace(originalLine) != "" {
 			continue
@@ -65,8 +80,6 @@ func stripJSONComments(data []byte) []byte {
 	}
 
 	joined := strings.Join(result, "\n")
-
-	// Remove trailing commas before } or ]
 	trailingCommaRe := regexp.MustCompile(`,(\s*[\}\]])`)
 	joined = trailingCommaRe.ReplaceAllString(joined, "$1")
 
@@ -78,7 +91,6 @@ func GetSettingsPath() (string, error) {
 	var baseDir string
 
 	if runtime.GOOS == "windows" {
-		// Windows: %APPDATA%\claude\settings.json
 		appData := os.Getenv("APPDATA")
 		if appData == "" {
 			home, err := os.UserHomeDir()
@@ -89,7 +101,6 @@ func GetSettingsPath() (string, error) {
 		}
 		baseDir = filepath.Join(appData, "claude")
 	} else {
-		// macOS/Linux: ~/.claude/settings.json
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
@@ -110,139 +121,53 @@ func LoadSettings() (*Settings, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Return empty settings if file doesn't exist
-			return &Settings{
-				Env: make(map[string]interface{}),
-			}, nil
+			return &Settings{raw: make(map[string]interface{})}, nil
 		}
 		return nil, err
 	}
 
-	// Strip comments from JSONC format
 	cleanData := stripJSONComments(data)
 
-	// First, unmarshal to a generic map to preserve all fields
-	var rawMap map[string]interface{}
-	if err := json.Unmarshal(cleanData, &rawMap); err != nil {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(cleanData, &raw); err != nil {
 		return nil, err
 	}
 
-	// Then unmarshal to our struct
-	var settings Settings
-	if err := json.Unmarshal(cleanData, &settings); err != nil {
-		return nil, err
-	}
-
-	// Store additional fields that we don't explicitly handle
-	settings.AdditionalFields = make(map[string]interface{})
-	knownFields := map[string]bool{
-		"model": true, "alwaysThinkingEnabled": true, "env": true,
-		"permissions": true, "allowedDirectories": true, "mcpServers": true,
-	}
-	for key, value := range rawMap {
-		if !knownFields[key] {
-			settings.AdditionalFields[key] = value
-		}
-	}
-
-	if settings.Env == nil {
-		settings.Env = make(map[string]interface{})
-	}
-
-	return &settings, nil
+	return &Settings{raw: raw}, nil
 }
 
-// backup creates a backup of the settings file before modifying
+// backup creates a backup of the settings file
 func backup(path string) error {
-	// Check if file exists
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return nil // No file to backup
+		return nil
 	}
 
-	// Read current file
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
 
-	// Create backup filename with timestamp
-	dir := filepath.Dir(path)
-	backupName := fmt.Sprintf("settings.%s.bak", time.Now().Format("20060102_150405"))
-	backupPath := filepath.Join(dir, backupName)
-
-	// Write backup
-	if err := os.WriteFile(backupPath, data, 0644); err != nil {
-		return err
-	}
-
-	// Clean old backups, keep only last 5
-	cleanOldBackups(dir, 5)
-
-	return nil
+	backupPath := path + ".bak"
+	return os.WriteFile(backupPath, data, 0644)
 }
 
-// cleanOldBackups removes old backup files, keeping only the most recent ones
-func cleanOldBackups(dir string, keep int) {
-	pattern := filepath.Join(dir, "settings.*.bak")
-	matches, err := filepath.Glob(pattern)
-	if err != nil || len(matches) <= keep {
-		return
-	}
-
-	// Files are sorted by name (which includes timestamp), so oldest are first
-	// Remove oldest files
-	for i := 0; i < len(matches)-keep; i++ {
-		os.Remove(matches[i])
-	}
-}
-
-// Save saves the Claude Code settings.json with backup
+// Save saves the settings.json with backup
 func (s *Settings) Save() error {
 	path, err := GetSettingsPath()
 	if err != nil {
 		return err
 	}
 
-	// Create .claude directory if it doesn't exist
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	// Backup before saving
 	if err := backup(path); err != nil {
-		return fmt.Errorf("backup failed: %w", err)
+		return err
 	}
 
-	// Build the output map with proper field ordering
-	output := make(map[string]interface{})
-
-	// Add known fields in order
-	if s.Model != "" {
-		output["model"] = s.Model
-	}
-	if s.AlwaysThinkingEnabled != nil {
-		output["alwaysThinkingEnabled"] = *s.AlwaysThinkingEnabled
-	}
-	if len(s.Env) > 0 {
-		output["env"] = s.Env
-	}
-	if len(s.Permissions) > 0 {
-		output["permissions"] = s.Permissions
-	}
-	if len(s.AllowedDirectories) > 0 {
-		output["allowedDirectories"] = s.AllowedDirectories
-	}
-	if len(s.McpServers) > 0 {
-		output["mcpServers"] = s.McpServers
-	}
-
-	// Add any additional fields that were in the original file
-	for key, value := range s.AdditionalFields {
-		output[key] = value
-	}
-
-	data, err := json.MarshalIndent(output, "", "  ")
+	data, err := json.MarshalIndent(s.raw, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -252,23 +177,16 @@ func (s *Settings) Save() error {
 
 // ApplyProvider applies a provider configuration to the settings
 func (s *Settings) ApplyProvider(p *config.Provider) {
-	if s.Env == nil {
-		s.Env = make(map[string]interface{})
-	}
+	env := s.getEnv()
 
-	// Set the provider configuration (always set these)
-	s.Env["ANTHROPIC_BASE_URL"] = p.BaseURL
-	s.Env["ANTHROPIC_AUTH_TOKEN"] = p.APIKey
+	env["ANTHROPIC_BASE_URL"] = p.BaseURL
+	env["ANTHROPIC_AUTH_TOKEN"] = p.APIKey
 
-	// Handle timeout: delete first, then set only if > 0
-	delete(s.Env, "API_TIMEOUT_MS")
+	delete(env, "API_TIMEOUT_MS")
 	if p.Timeout > 0 {
-		s.Env["API_TIMEOUT_MS"] = strconv.Itoa(p.Timeout)
+		env["API_TIMEOUT_MS"] = strconv.Itoa(p.Timeout)
 	}
 
-	// Handle models: delete first, then set only if not empty
-	// This ensures that empty model fields don't appear in settings.json
-	// and that previously set models are removed when changed to empty
 	modelFields := map[string]string{
 		"ANTHROPIC_MODEL":                p.Model,
 		"ANTHROPIC_SMALL_FAST_MODEL":     p.SmallModel,
@@ -278,46 +196,30 @@ func (s *Settings) ApplyProvider(p *config.Provider) {
 	}
 
 	for key, value := range modelFields {
-		delete(s.Env, key)
+		delete(env, key)
 		if value != "" {
-			s.Env[key] = value
+			env[key] = value
 		}
 	}
 
-	// Disable non-essential traffic for third-party providers
-	s.Env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = 1
+	env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = 1
 }
 
 // ClearProviderSettings removes provider-related settings from env
 func (s *Settings) ClearProviderSettings() {
-	delete(s.Env, "ANTHROPIC_BASE_URL")
-	delete(s.Env, "ANTHROPIC_AUTH_TOKEN")
-	delete(s.Env, "API_TIMEOUT_MS")
-	delete(s.Env, "ANTHROPIC_MODEL")
-	delete(s.Env, "ANTHROPIC_SMALL_FAST_MODEL")
-	delete(s.Env, "ANTHROPIC_DEFAULT_SONNET_MODEL")
-	delete(s.Env, "ANTHROPIC_DEFAULT_OPUS_MODEL")
-	delete(s.Env, "ANTHROPIC_DEFAULT_HAIKU_MODEL")
-	delete(s.Env, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC")
+	env := s.getEnv()
+	for _, key := range managedEnvKeys {
+		delete(env, key)
+	}
 }
 
 // GetCurrentEnvConfig returns a summary of the current env configuration
 func (s *Settings) GetCurrentEnvConfig() map[string]string {
 	result := make(map[string]string)
+	env := s.getEnv()
 
-	keys := []string{
-		"ANTHROPIC_BASE_URL",
-		"ANTHROPIC_AUTH_TOKEN",
-		"API_TIMEOUT_MS",
-		"ANTHROPIC_MODEL",
-		"ANTHROPIC_SMALL_FAST_MODEL",
-		"ANTHROPIC_DEFAULT_SONNET_MODEL",
-		"ANTHROPIC_DEFAULT_OPUS_MODEL",
-		"ANTHROPIC_DEFAULT_HAIKU_MODEL",
-	}
-
-	for _, key := range keys {
-		if val, ok := s.Env[key]; ok {
+	for _, key := range managedEnvKeys[:8] { // exclude DISABLE_NONESSENTIAL_TRAFFIC
+		if val, ok := env[key]; ok {
 			switch v := val.(type) {
 			case string:
 				result[key] = v
@@ -325,8 +227,6 @@ func (s *Settings) GetCurrentEnvConfig() map[string]string {
 				result[key] = strconv.FormatFloat(v, 'f', -1, 64)
 			case int:
 				result[key] = strconv.Itoa(v)
-			default:
-				result[key] = ""
 			}
 		}
 	}
