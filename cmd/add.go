@@ -6,54 +6,49 @@ import (
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/fatih/color"
 	"github.com/katz/ccs/internal/config"
-	"github.com/katz/ccs/internal/i18n"
 	"github.com/spf13/cobra"
 )
 
 var addCmd = &cobra.Command{
 	Use:     "add",
 	Aliases: []string{"a"},
-	Short:   "Add a new provider / 添加新提供商 (alias: a)",
-	Long:    `Add a new API provider configuration interactively.`,
+	Short:   "Add a new provider (alias: a)",
 	Run:     runAdd,
 }
 
 func runAdd(cmd *cobra.Command, args []string) {
-	t := i18n.T()
-
 	cfg, err := config.Load()
 	if err != nil {
-		color.Red(t.ErrLoadConfig, err)
+		color.Red("Failed to load config: %v", err)
 		return
 	}
 
 	var provider config.Provider
 
-	// Required fields
 	questions := []*survey.Question{
 		{
 			Name:     "name",
-			Prompt:   &survey.Input{Message: t.PromptName + ":"},
+			Prompt:   &survey.Input{Message: "Name:"},
 			Validate: survey.Required,
 		},
 		{
 			Name:     "alias",
-			Prompt:   &survey.Input{Message: t.PromptAlias + ":"},
+			Prompt:   &survey.Input{Message: "Alias:"},
 			Validate: survey.Required,
 		},
 		{
 			Name:     "baseurl",
-			Prompt:   &survey.Input{Message: t.PromptBaseURL + ":"},
+			Prompt:   &survey.Input{Message: "Base URL:"},
 			Validate: survey.Required,
 		},
 		{
 			Name:     "apikey",
-			Prompt:   &survey.Password{Message: t.PromptAPIKey + ":"},
+			Prompt:   &survey.Password{Message: "API Key:"},
 			Validate: survey.Required,
 		},
 		{
 			Name:   "model",
-			Prompt: &survey.Input{Message: t.PromptModel + ":"},
+			Prompt: &survey.Input{Message: "Model (empty for Claude default):"},
 		},
 	}
 
@@ -75,15 +70,14 @@ func runAdd(cmd *cobra.Command, args []string) {
 	provider.APIKey = answers.APIKey
 	provider.Model = answers.Model
 
-	// Optional model fields
-	var smallModel, sonnetModel, opusModel, haikuModel string
-	var timeoutStr string
+	// Optional fields
+	var smallModel, sonnetModel, opusModel, haikuModel, timeoutStr string
 
-	survey.AskOne(&survey.Input{Message: t.PromptSmallModel + ":"}, &smallModel)
-	survey.AskOne(&survey.Input{Message: t.PromptSonnetModel + ":"}, &sonnetModel)
-	survey.AskOne(&survey.Input{Message: t.PromptOpusModel + ":"}, &opusModel)
-	survey.AskOne(&survey.Input{Message: t.PromptHaikuModel + ":"}, &haikuModel)
-	survey.AskOne(&survey.Input{Message: t.PromptTimeout + ":", Default: "300000"}, &timeoutStr)
+	survey.AskOne(&survey.Input{Message: "Small model (empty=main):"}, &smallModel)
+	survey.AskOne(&survey.Input{Message: "Sonnet model (empty=main):"}, &sonnetModel)
+	survey.AskOne(&survey.Input{Message: "Opus model (empty=main):"}, &opusModel)
+	survey.AskOne(&survey.Input{Message: "Haiku model (empty=main):"}, &haikuModel)
+	survey.AskOne(&survey.Input{Message: "Timeout ms:", Default: "300000"}, &timeoutStr)
 
 	provider.SmallModel = smallModel
 	provider.SonnetModel = sonnetModel
@@ -96,21 +90,19 @@ func runAdd(cmd *cobra.Command, args []string) {
 		provider.Timeout = 300000
 	}
 
-	// Add provider (FillDefaults is called inside AddProvider)
 	if err := cfg.AddProvider(provider); err != nil {
 		if err == config.ErrProviderExists {
-			color.Red(t.ErrProviderExists, provider.Alias)
+			color.Red("Provider '%s' already exists", provider.Alias)
 		} else {
-			color.Red(t.ErrSaveConfig, err)
+			color.Red("Failed to add provider: %v", err)
 		}
 		return
 	}
 
-	// Save config
 	if err := cfg.Save(); err != nil {
-		color.Red(t.ErrSaveConfig, err)
+		color.Red("Failed to save config: %v", err)
 		return
 	}
 
-	color.Green(t.MsgProviderAdded, provider.Name)
+	color.Green("Provider '%s' added", provider.Name)
 }

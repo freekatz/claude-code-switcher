@@ -48,7 +48,8 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
-          go build -v -ldflags="-s -w -X 'main.version=${{ github.ref_name }}'" -o ${{ matrix.asset_name }} .
+          chmod +x ./scripts/build.sh
+          ./scripts/build.sh "${{ github.ref_name }}" "${{ matrix.asset_name }}"
           chmod +x ${{ matrix.asset_name }}
 
       - name: Upload artifact

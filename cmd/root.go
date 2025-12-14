@@ -3,31 +3,60 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"runtime"
 
-	"github.com/katz/ccs/internal/config"
-	"github.com/katz/ccs/internal/i18n"
 	"github.com/spf13/cobra"
 )
 
-// version can be set via ldflags during build
-var version = "1.0.0"
+// Build info variables - can be set via ldflags during build
+var (
+	version   = "dev"
+	buildTime = "unknown"
+	gitBranch = "unknown"
+	gitCommit = "unknown"
+)
+
+var name = "Claude Code Switcher"
 
 var rootCmd = &cobra.Command{
 	Use:   "ccs",
-	Short: "Claude Code Switcher",
+	Short: name,
 	Long:  `Claude Code Switcher - Manage multiple Claude Code API providers`,
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Load config and set language before any command runs
-		cfg, err := config.Load()
-		if err == nil && cfg.Language != "" {
-			i18n.SetLanguage(i18n.Language(cfg.Language))
-		}
-	},
 }
 
 func init() {
 	rootCmd.Version = version
-	rootCmd.SetVersionTemplate(fmt.Sprintf("{{.Name}} version %s\n", version))
+	rootCmd.SetVersionTemplate(fmt.Sprintf(`%s version %s
+Built:      %s
+Git branch: %s
+Git commit: %s
+Go version: %s
+OS/Arch:    %s/%s
+`, name, version, buildTime, gitBranch, gitCommit, runtime.Version(), runtime.GOOS, runtime.GOARCH))
+
+	// Hide completion command
+	rootCmd.CompletionOptions.HiddenDefaultCmd = true
+
+	// Add help command with alias
+	helpCmd := &cobra.Command{
+		Use:     "help [command]",
+		Aliases: []string{"h"},
+		Short:   "Help about any command (alias: h)",
+		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) == 0 {
+				rootCmd.Help()
+				return
+			}
+			for _, c := range rootCmd.Commands() {
+				if c.Name() == args[0] || contains(c.Aliases, args[0]) {
+					c.Help()
+					return
+				}
+			}
+			rootCmd.Help()
+		},
+	}
+	rootCmd.SetHelpCommand(helpCmd)
 
 	// Add all subcommands
 	rootCmd.AddCommand(listCmd)
@@ -35,8 +64,15 @@ func init() {
 	rootCmd.AddCommand(editCmd)
 	rootCmd.AddCommand(useCmd)
 	rootCmd.AddCommand(removeCmd)
-	rootCmd.AddCommand(currentCmd)
-	rootCmd.AddCommand(langCmd)
+}
+
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }
 
 // Execute runs the root command

@@ -8,29 +8,25 @@ import (
 	"github.com/fatih/color"
 	"github.com/katz/ccs/internal/claude"
 	"github.com/katz/ccs/internal/config"
-	"github.com/katz/ccs/internal/i18n"
 	"github.com/spf13/cobra"
 )
 
 var editCmd = &cobra.Command{
 	Use:     "edit [alias]",
 	Aliases: []string{"e"},
-	Short:   "Edit a provider / 编辑提供商配置 (alias: e)",
-	Long:    `Edit an existing provider configuration.`,
+	Short:   "Edit a provider (alias: e)",
 	Run:     runEdit,
 }
 
 func runEdit(cmd *cobra.Command, args []string) {
-	t := i18n.T()
-
 	cfg, err := config.Load()
 	if err != nil {
-		color.Red(t.ErrLoadConfig, err)
+		color.Red("Failed to load config: %v", err)
 		return
 	}
 
 	if len(cfg.Providers) == 0 {
-		color.Yellow(t.MsgNoProviders)
+		color.Yellow("No providers configured")
 		return
 	}
 
@@ -38,7 +34,6 @@ func runEdit(cmd *cobra.Command, args []string) {
 	if len(args) > 0 {
 		alias = args[0]
 	} else {
-		// Let user select provider
 		options := make([]string, len(cfg.Providers))
 		for i, p := range cfg.Providers {
 			options[i] = fmt.Sprintf("%s (%s)", p.Name, p.Alias)
@@ -46,7 +41,7 @@ func runEdit(cmd *cobra.Command, args []string) {
 
 		var selected int
 		prompt := &survey.Select{
-			Message: t.PromptSelectProvider + ":",
+			Message: "Select provider:",
 			Options: options,
 		}
 		if err := survey.AskOne(prompt, &selected); err != nil {
@@ -57,143 +52,129 @@ func runEdit(cmd *cobra.Command, args []string) {
 
 	provider, err := cfg.GetProvider(alias)
 	if err != nil {
-		color.Red(t.ErrProviderNotFound, alias)
+		color.Red("Provider '%s' not found", alias)
 		return
 	}
 
-	// Select field to edit
 	fields := []string{
-		t.LabelAll,
-		t.FieldName,
-		t.FieldAlias,
-		t.FieldBaseURL,
-		t.FieldAPIKey,
-		t.FieldModel,
-		t.FieldSmallModel,
-		t.FieldSonnetModel,
-		t.FieldOpusModel,
-		t.FieldHaikuModel,
-		t.FieldTimeout,
+		"All fields",
+		"Name",
+		"Alias",
+		"Base URL",
+		"API Key",
+		"Model",
+		"Small model",
+		"Sonnet model",
+		"Opus model",
+		"Haiku model",
+		"Timeout",
 	}
 
 	var selectedField int
 	fieldPrompt := &survey.Select{
-		Message: t.PromptSelectField + ":",
+		Message: "Select field:",
 		Options: fields,
 	}
 	if err := survey.AskOne(fieldPrompt, &selectedField); err != nil {
 		return
 	}
 
-	// Edit selected field(s)
 	updated := *provider
 
 	if selectedField == 0 {
-		// Edit all fields
-		editAllFields(&updated, t)
+		editAllFields(&updated)
 	} else {
-		// Edit specific field
-		editField(&updated, selectedField, t)
+		editField(&updated, selectedField)
 	}
 
-	// Check if this is the current provider
 	isCurrentProvider := (cfg.CurrentProvider == alias) || (cfg.CurrentProvider == updated.Alias)
 
-	// Update provider
 	if err := cfg.UpdateProvider(alias, updated); err != nil {
 		if err == config.ErrProviderExists {
-			color.Red(t.ErrProviderExists, updated.Alias)
+			color.Red("Provider '%s' already exists", updated.Alias)
 		} else {
-			color.Red(t.ErrSaveConfig, err)
+			color.Red("Failed to update: %v", err)
 		}
 		return
 	}
 
 	if err := cfg.Save(); err != nil {
-		color.Red(t.ErrSaveConfig, err)
+		color.Red("Failed to save: %v", err)
 		return
 	}
 
-	// If this is the current provider, update Claude Code settings immediately
 	if isCurrentProvider {
-		if err := updateClaudeSettings(&updated, t); err != nil {
-			color.Yellow("Warning: Provider updated but failed to update Claude Code settings: %v", err)
+		if err := updateClaudeSettings(&updated); err != nil {
+			color.Yellow("Warning: Failed to update Claude settings: %v", err)
 		}
 	}
 
-	color.Green(t.MsgProviderUpdated, updated.Name)
+	color.Green("Provider '%s' updated", updated.Name)
 }
 
-func editAllFields(p *config.Provider, t i18n.Messages) {
-	survey.AskOne(&survey.Input{Message: t.PromptName + ":", Default: p.Name}, &p.Name)
-	survey.AskOne(&survey.Input{Message: t.PromptAlias + ":", Default: p.Alias}, &p.Alias)
-	survey.AskOne(&survey.Input{Message: t.PromptBaseURL + ":", Default: p.BaseURL}, &p.BaseURL)
+func editAllFields(p *config.Provider) {
+	survey.AskOne(&survey.Input{Message: "Name:", Default: p.Name}, &p.Name)
+	survey.AskOne(&survey.Input{Message: "Alias:", Default: p.Alias}, &p.Alias)
+	survey.AskOne(&survey.Input{Message: "Base URL:", Default: p.BaseURL}, &p.BaseURL)
 
 	var apiKey string
-	survey.AskOne(&survey.Password{Message: t.PromptAPIKey + " (leave empty to keep current):"}, &apiKey)
+	survey.AskOne(&survey.Password{Message: "API Key (empty=keep):"}, &apiKey)
 	if apiKey != "" {
 		p.APIKey = apiKey
 	}
 
-	survey.AskOne(&survey.Input{Message: t.PromptModel + " (clear to empty):", Default: p.Model}, &p.Model)
-	survey.AskOne(&survey.Input{Message: t.PromptSmallModel + " (clear to empty):", Default: p.SmallModel}, &p.SmallModel)
-	survey.AskOne(&survey.Input{Message: t.PromptSonnetModel + " (clear to empty):", Default: p.SonnetModel}, &p.SonnetModel)
-	survey.AskOne(&survey.Input{Message: t.PromptOpusModel + " (clear to empty):", Default: p.OpusModel}, &p.OpusModel)
-	survey.AskOne(&survey.Input{Message: t.PromptHaikuModel + " (clear to empty):", Default: p.HaikuModel}, &p.HaikuModel)
+	survey.AskOne(&survey.Input{Message: "Model:", Default: p.Model}, &p.Model)
+	survey.AskOne(&survey.Input{Message: "Small model:", Default: p.SmallModel}, &p.SmallModel)
+	survey.AskOne(&survey.Input{Message: "Sonnet model:", Default: p.SonnetModel}, &p.SonnetModel)
+	survey.AskOne(&survey.Input{Message: "Opus model:", Default: p.OpusModel}, &p.OpusModel)
+	survey.AskOne(&survey.Input{Message: "Haiku model:", Default: p.HaikuModel}, &p.HaikuModel)
 
 	var timeoutStr string
-	survey.AskOne(&survey.Input{Message: t.PromptTimeout + ":", Default: strconv.Itoa(p.Timeout)}, &timeoutStr)
+	survey.AskOne(&survey.Input{Message: "Timeout ms:", Default: strconv.Itoa(p.Timeout)}, &timeoutStr)
 	if timeout, err := strconv.Atoi(timeoutStr); err == nil {
 		p.Timeout = timeout
 	}
 }
 
-func editField(p *config.Provider, fieldIndex int, t i18n.Messages) {
+func editField(p *config.Provider, fieldIndex int) {
 	switch fieldIndex {
-	case 1: // Name
-		survey.AskOne(&survey.Input{Message: t.PromptName + ":", Default: p.Name}, &p.Name)
-	case 2: // Alias
-		survey.AskOne(&survey.Input{Message: t.PromptAlias + ":", Default: p.Alias}, &p.Alias)
-	case 3: // BaseURL
-		survey.AskOne(&survey.Input{Message: t.PromptBaseURL + ":", Default: p.BaseURL}, &p.BaseURL)
-	case 4: // APIKey
+	case 1:
+		survey.AskOne(&survey.Input{Message: "Name:", Default: p.Name}, &p.Name)
+	case 2:
+		survey.AskOne(&survey.Input{Message: "Alias:", Default: p.Alias}, &p.Alias)
+	case 3:
+		survey.AskOne(&survey.Input{Message: "Base URL:", Default: p.BaseURL}, &p.BaseURL)
+	case 4:
 		var apiKey string
-		survey.AskOne(&survey.Password{Message: t.PromptAPIKey + ":"}, &apiKey)
+		survey.AskOne(&survey.Password{Message: "API Key:"}, &apiKey)
 		if apiKey != "" {
 			p.APIKey = apiKey
 		}
-	case 5: // Model
-		survey.AskOne(&survey.Input{Message: t.PromptModel + " (clear to empty):", Default: p.Model}, &p.Model)
-	case 6: // SmallModel
-		survey.AskOne(&survey.Input{Message: t.PromptSmallModel + " (clear to empty):", Default: p.SmallModel}, &p.SmallModel)
-	case 7: // SonnetModel
-		survey.AskOne(&survey.Input{Message: t.PromptSonnetModel + " (clear to empty):", Default: p.SonnetModel}, &p.SonnetModel)
-	case 8: // OpusModel
-		survey.AskOne(&survey.Input{Message: t.PromptOpusModel + " (clear to empty):", Default: p.OpusModel}, &p.OpusModel)
-	case 9: // HaikuModel
-		survey.AskOne(&survey.Input{Message: t.PromptHaikuModel + " (clear to empty):", Default: p.HaikuModel}, &p.HaikuModel)
-	case 10: // Timeout
+	case 5:
+		survey.AskOne(&survey.Input{Message: "Model:", Default: p.Model}, &p.Model)
+	case 6:
+		survey.AskOne(&survey.Input{Message: "Small model:", Default: p.SmallModel}, &p.SmallModel)
+	case 7:
+		survey.AskOne(&survey.Input{Message: "Sonnet model:", Default: p.SonnetModel}, &p.SonnetModel)
+	case 8:
+		survey.AskOne(&survey.Input{Message: "Opus model:", Default: p.OpusModel}, &p.OpusModel)
+	case 9:
+		survey.AskOne(&survey.Input{Message: "Haiku model:", Default: p.HaikuModel}, &p.HaikuModel)
+	case 10:
 		var timeoutStr string
-		survey.AskOne(&survey.Input{Message: t.PromptTimeout + ":", Default: strconv.Itoa(p.Timeout)}, &timeoutStr)
+		survey.AskOne(&survey.Input{Message: "Timeout ms:", Default: strconv.Itoa(p.Timeout)}, &timeoutStr)
 		if timeout, err := strconv.Atoi(timeoutStr); err == nil {
 			p.Timeout = timeout
 		}
 	}
 }
 
-// updateClaudeSettings updates the Claude Code settings with the provider config
-func updateClaudeSettings(p *config.Provider, t i18n.Messages) error {
+func updateClaudeSettings(p *config.Provider) error {
 	settings, err := claude.LoadSettings()
 	if err != nil {
 		return err
 	}
-
-	// Clear existing provider settings first to ensure clean state
 	settings.ClearProviderSettings()
-
-	// Apply new provider settings
 	settings.ApplyProvider(p)
-
-	// Save settings
 	return settings.Save()
 }
