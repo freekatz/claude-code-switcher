@@ -10,12 +10,11 @@ A CLI tool for managing and quickly switching between multiple Claude Code API p
 
 ### Features
 
-- 🚀 Manage multiple API providers (Anthropic, compatible third-party services)
-- 🔄 Quick switching between providers
-- 🌐 Bilingual support (English/Chinese)
-- ⚙️ Automatic Claude Code settings.json synchronization
-- 📝 Support for JSONC format (comments in settings.json)
-- 🎯 Interactive CLI with intuitive prompts
+- Manage multiple API providers (Anthropic, compatible third-party services)
+- Quick switching between providers
+- Automatic Claude Code settings.json synchronization
+- Support for JSONC format (comments in settings.json)
+- Interactive CLI with intuitive prompts
 
 ### Installation
 
@@ -33,7 +32,8 @@ sudo mv ccs /usr/local/bin/
 ```bash
 git clone https://github.com/freekatz/claude-code-switch.git
 cd claude-code-switch
-go install .
+./scripts/build.sh
+sudo mv ccs /usr/local/bin/
 ```
 
 ### Usage
@@ -43,12 +43,11 @@ ccs [command]
 
 Available Commands:
   add (a)       Add a new provider
-  list (ls)     List all providers
+  list (ls)     List providers or show provider details
   use (u)       Switch to a provider
   edit (e)      Edit a provider
   remove (rm)   Remove a provider
-  current (c)   Show current configuration
-  lang          Switch language (en/zh)
+  help (h)      Help about any command
 
 Flags:
   -h, --help      help for ccs
@@ -79,12 +78,16 @@ Follow the interactive prompts to configure:
 #### 2. List Providers
 
 ```bash
-ccs list
-# or
 ccs ls
 ```
 
-Shows all configured providers, with the current one marked with `*`.
+Shows all configured provider aliases, with the current one marked with `*`.
+
+```bash
+ccs ls <alias>
+```
+
+Shows detailed configuration for a specific provider.
 
 #### 3. Switch Provider
 
@@ -106,22 +109,10 @@ ccs e <alias>
 
 If the provider being edited is currently active, the settings.json will be updated automatically.
 
-#### 5. View Current Configuration
+#### 5. Remove Provider
 
 ```bash
-ccs current
-# or
-ccs c
-```
-
-Shows both the CCS configuration and the actual Claude Code settings.
-
-#### 6. Switch Language
-
-```bash
-ccs lang zh  # Switch to Chinese
-ccs lang en  # Switch to English
-ccs lang     # Toggle language
+ccs rm <alias>
 ```
 
 ### Configuration Files
@@ -146,6 +137,19 @@ ccs lang     # Toggle language
 }
 ```
 
+### Build
+
+```bash
+# Development build
+./scripts/build.sh
+
+# Build with version
+./scripts/build.sh v1.0.0
+
+# Cross-compile
+GOOS=linux GOARCH=amd64 ./scripts/build.sh v1.0.0 ccs-linux-amd64
+```
+
 ---
 
 ## 中文
@@ -154,12 +158,11 @@ ccs lang     # Toggle language
 
 ### 功能特性
 
-- 🚀 管理多个 API 提供商（Anthropic、兼容的第三方服务）
-- 🔄 快速切换提供商
-- 🌐 双语支持（中文/英文）
-- ⚙️ 自动同步 Claude Code settings.json
-- 📝 支持 JSONC 格式（settings.json 中的注释）
-- 🎯 交互式命令行界面
+- 管理多个 API 提供商（Anthropic、兼容的第三方服务）
+- 快速切换提供商
+- 自动同步 Claude Code settings.json
+- 支持 JSONC 格式（settings.json 中的注释）
+- 交互式命令行界面
 
 ### 安装
 
@@ -177,7 +180,8 @@ sudo mv ccs /usr/local/bin/
 ```bash
 git clone https://github.com/freekatz/claude-code-switch.git
 cd claude-code-switch
-go install .
+./scripts/build.sh
+sudo mv ccs /usr/local/bin/
 ```
 
 ### 使用方法
@@ -187,12 +191,11 @@ ccs [命令]
 
 可用命令:
   add (a)       添加新提供商
-  list (ls)     列出所有提供商
+  list (ls)     列出提供商或显示详情
   use (u)       切换到指定提供商
   edit (e)      编辑提供商配置
   remove (rm)   删除提供商
-  current (c)   显示当前配置
-  lang          切换语言 (en/zh)
+  help (h)      显示帮助
 
 选项:
   -h, --help      显示帮助
@@ -223,12 +226,16 @@ ccs a
 #### 2. 列出提供商
 
 ```bash
-ccs list
-# 或
 ccs ls
 ```
 
-显示所有已配置的提供商，当前使用的标记为 `*`。
+显示所有已配置的提供商别名，当前使用的标记为 `*`。
+
+```bash
+ccs ls <alias>
+```
+
+显示指定提供商的详细配置。
 
 #### 3. 切换提供商
 
@@ -250,22 +257,10 @@ ccs e <alias>
 
 如果编辑的是当前使用的提供商，settings.json 会自动更新。
 
-#### 5. 查看当前配置
+#### 5. 删除提供商
 
 ```bash
-ccs current
-# 或
-ccs c
-```
-
-显示 CCS 配置和实际的 Claude Code 设置。
-
-#### 6. 切换语言
-
-```bash
-ccs lang zh  # 切换到中文
-ccs lang en  # 切换到英文
-ccs lang     # 切换语言
+ccs rm <alias>
 ```
 
 ### 配置文件
@@ -288,4 +283,17 @@ ccs lang     # 切换语言
   "haiku_model": "doubao-seed-code-preview-latest",
   "timeout_ms": 300000
 }
+```
+
+### 构建
+
+```bash
+# 开发构建
+./scripts/build.sh
+
+# 指定版本构建
+./scripts/build.sh v1.0.0
+
+# 交叉编译
+GOOS=linux GOARCH=amd64 ./scripts/build.sh v1.0.0 ccs-linux-amd64
 ```
