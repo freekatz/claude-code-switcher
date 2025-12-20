@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -88,26 +87,11 @@ func stripJSONComments(data []byte) []byte {
 
 // GetSettingsPath returns the Claude Code settings.json path
 func GetSettingsPath() (string, error) {
-	var baseDir string
-
-	if runtime.GOOS == "windows" {
-		appData := os.Getenv("APPDATA")
-		if appData == "" {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", err
-			}
-			appData = filepath.Join(home, "AppData", "Roaming")
-		}
-		baseDir = filepath.Join(appData, "claude")
-	} else {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		baseDir = filepath.Join(home, ".claude")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
 	}
-
+	baseDir := filepath.Join(home, ".claude")
 	return filepath.Join(baseDir, "settings.json"), nil
 }
 

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 )
 
 // Config represents the CCS configuration
@@ -23,19 +22,6 @@ var (
 
 // GetConfigDir returns the CCS configuration directory path
 func GetConfigDir() (string, error) {
-	if runtime.GOOS == "windows" {
-		// Windows: %APPDATA%\ccs
-		appData := os.Getenv("APPDATA")
-		if appData == "" {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", err
-			}
-			appData = filepath.Join(home, "AppData", "Roaming")
-		}
-		return filepath.Join(appData, "ccs"), nil
-	}
-
 	// macOS/Linux: ~/.config/ccs
 	home, err := os.UserHomeDir()
 	if err != nil {
